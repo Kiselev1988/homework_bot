@@ -35,7 +35,7 @@ handler.setFormatter(format)
 
 
 def send_message(bot, message):
-    """Отправялет сообщение в Telegramm"""
+    """Отправялет сообщение в Telegramm."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
         logger.info('Сообщение отправлено')
@@ -44,7 +44,7 @@ def send_message(bot, message):
 
 
 def get_api_answer(current_timestamp):
-    """Запрос к API сервису Yandex.Practicum"""
+    """Запрос к API сервису Yandex.Practicum."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
     try:
@@ -58,7 +58,7 @@ def get_api_answer(current_timestamp):
 
 
 def check_response(response):
-    """ Проверка ответа API """
+    """Проверка ответа API."""
     homework = response['homeworks']
     if 'homeworks' not in response:
         logger.error('В запросе нет ключа homeworks')
@@ -81,7 +81,7 @@ def parse_status(homework):
 
 
 def check_tokens():
-    """Проверка доступности токенов"""
+    """Проверка доступности токенов."""
     if TELEGRAM_TOKEN is None:
         logger.critical('Отсутствует токен Телеграмма')
     if PRACTICUM_TOKEN is None:
