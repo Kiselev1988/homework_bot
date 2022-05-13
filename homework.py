@@ -1,13 +1,11 @@
 import logging
 import os
 import time
-import json
+from logging.handlers import RotatingFileHandler
 
 import requests
 import telegram
 from dotenv import load_dotenv
-from logging.handlers import RotatingFileHandler
-
 
 load_dotenv()
 
@@ -32,11 +30,14 @@ API_ERROR = ('Ошибка запроса к API. Код ответа:{status}, 
              '{params}'
              )
 TYPE_HOMEWORKS = 'Запрос вернул некорректный тип {type}'
-UNKNOWN_VERDICT = 'Неизветный статус {verdict}'
-HOMEWORK_STATUS = 'Изменился статус проверки работы "{name}". {verdict}'
+UNKNOWN_STATUS = 'Неизветный статус {status}'
+HOMEWORK_STATUS = 'Изменился статус проверки работы "{name}". {status}'
 TOKENS_ERROR = 'Нет токена {token}'
 TOKEN_NOT_FOUND = 'Токен(ы) не найден(ы)'
-MESSSAGE = 'Сбой в работе программы: {error}'
+BOT_SEND_ERROR_MESSSAGE = 'Сбой в работе программы: {error}'
+RESPONSE_JSON_ERROR = ('Ошибка:{error_value}. Код статуса:{error}, {url},'
+                       '{headers}, {params}')
+TOKENS = ['PRACTICUM_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_TOKEN']
 
 LOG_FILENAME = __file__ + '.log'
 logger = logging.getLogger(__name__)
@@ -62,53 +63,58 @@ def send_message(bot, message):
 
 def get_api_answer(current_timestamp):
     """Запрос к API сервису Yandex.Practicum."""
-    params = {'from_date': current_timestamp}
+    parameters = dict(
+        url=ENDPOINT,
+        headers=HEADERS,
+        params={'from_date': current_timestamp})
     try:
-        response = requests.get(url=ENDPOINT, headers=HEADERS, params=params)
+        response = requests.get(**parameters)
     except requests.RequestException:
-        raise ConnectionError(NETWORK_ERROR.format(
-            url=ENDPOINT, headers=HEADERS, params=params
-        ))
+        raise ConnectionError(NETWORK_ERROR.format(**parameters))
     if response.status_code != CODE_STATUS:
         raise ValueError(API_ERROR.format(
             status=response.status_code,
-            url=ENDPOINT, headers=HEADERS, params=params
+            **parameters
         ))
-    try:
-        return response.json()
-    except json.decoder.JSONDecodeError as error:
-        raise ValueError(response.text, error)
+    response_json = response.json()
+    for error in ['code', 'error']:
+        if error in response_json:
+            raise ValueError(RESPONSE_JSON_ERROR.format(
+                error_value=response_json[error],
+                error=error,
+                **parameters
+            ))
+    return response_json
 
 
 def check_response(response):
     """Проверка ответа API."""
-    homeworks = response['homeworks']
     if not isinstance(response, dict):
-        raise TypeError(TYPE_HOMEWORKS.format(type=response))
-    if not isinstance(homeworks, list):
-        raise TypeError(TYPE_HOMEWORKS.format(type=homeworks))
+        raise TypeError(TYPE_HOMEWORKS.format(type=type(response)))
     if 'homeworks' not in response:
         raise ValueError('В запросе нет ключа homeworks')
+    homeworks = response['homeworks']
+    if not isinstance(homeworks, list):
+        raise TypeError(TYPE_HOMEWORKS.format(type=type(homeworks)))
     return homeworks
 
 
 def parse_status(homework):
     """Проверка изменения статуса домашней работы."""
     name = homework['homework_name']
-    verdict = homework['status']
-    if verdict not in VERDICTS:
-        raise ValueError(UNKNOWN_VERDICT.format(verdict=verdict))
-    return HOMEWORK_STATUS.format(name=name, verdict=VERDICTS[verdict])
+    status = homework['status']
+    if status not in VERDICTS:
+        raise ValueError(UNKNOWN_STATUS.format(status=status))
+    return HOMEWORK_STATUS.format(name=name, status=VERDICTS[status])
 
 
 def check_tokens():
     """Проверка доступности токенов."""
-    tokens = ['PRACTICUM_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_TOKEN']
-    tokens_error = ''
-    for name in tokens:
+    tokens_error = []
+    for name in TOKENS:
         if globals()[name] is None:
-            tokens_error += f'{name}'
-    if tokens_error != '':
+            tokens_error.append(name)
+    if tokens_error != []:
         logger.critical(TOKENS_ERROR.format(token=tokens_error))
         return False
     return True
@@ -125,9 +131,9 @@ def main():
             response = get_api_answer(current_timestamp)
             message = parse_status(check_response(response)[0])
             send_message(bot, message)
-            response.get('current_date', current_timestamp)
+            current_timestamp = response.get('current_date', current_timestamp)
         except Exception as error:
-            message = MESSSAGE.format(error=error)
+            message = BOT_SEND_ERROR_MESSSAGE.format(error=error)
             logger.exception(message)
             send_message(bot, message)
         time.sleep(RETRY_TIME)
