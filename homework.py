@@ -25,7 +25,7 @@ VERDICTS = {
 STATUS = 'Новый статус домашней работы {name} - {verdict}'
 SEND_MESSAGE_ERROR = 'Ошибка {error} отправки сообщения {message}.'
 SEND_MESSAGE_SUCCSES = 'Cообщение {message} успешно отправлено.'
-NETWORK_ERROR = 'Ошибка соединения с {url}, {headers}, {params}'
+NETWORK_ERROR = 'Ошибка {error} соединения с {url}, {headers}, {params}'
 API_ERROR = ('Ошибка запроса к API. Код ответа:{status}, {url}, {headers},'
              '{params}'
              )
@@ -37,7 +37,8 @@ TOKEN_NOT_FOUND = 'Токен(ы) не найден(ы)'
 BOT_SEND_ERROR_MESSSAGE = 'Сбой в работе программы: {error}'
 RESPONSE_JSON_ERROR = ('Ошибка:{error_value}. Код статуса:{error}, {url},'
                        '{headers}, {params}')
-TOKENS = ['PRACTICUM_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_TOKEN']
+TOKENS = ('PRACTICUM_TOKEN', 'TELEGRAM_CHAT_ID', 'TELEGRAM_TOKEN')
+KEY_HOMEWORKS_ERROR = 'В запросе нет ключа homeworks'
 
 LOG_FILENAME = __file__ + '.log'
 logger = logging.getLogger(__name__)
@@ -48,6 +49,7 @@ handler = RotatingFileHandler(
 logger.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 format = logging.Formatter('%(asctime)s, %(levelname)s, %(message)s')
+handler.setFormatter(format)
 
 
 def send_message(bot, message):
@@ -69,8 +71,8 @@ def get_api_answer(current_timestamp):
         params={'from_date': current_timestamp})
     try:
         response = requests.get(**parameters)
-    except requests.RequestException:
-        raise ConnectionError(NETWORK_ERROR.format(**parameters))
+    except requests.RequestException as error:
+        raise ConnectionError(NETWORK_ERROR.format(error=error, **parameters))
     if response.status_code != CODE_STATUS:
         raise ValueError(API_ERROR.format(
             status=response.status_code,
@@ -92,7 +94,7 @@ def check_response(response):
     if not isinstance(response, dict):
         raise TypeError(TYPE_HOMEWORKS.format(type=type(response)))
     if 'homeworks' not in response:
-        raise ValueError('В запросе нет ключа homeworks')
+        raise ValueError(KEY_HOMEWORKS_ERROR)
     homeworks = response['homeworks']
     if not isinstance(homeworks, list):
         raise TypeError(TYPE_HOMEWORKS.format(type=type(homeworks)))
@@ -110,11 +112,8 @@ def parse_status(homework):
 
 def check_tokens():
     """Проверка доступности токенов."""
-    tokens_error = []
-    for name in TOKENS:
-        if globals()[name] is None:
-            tokens_error.append(name)
-    if tokens_error != []:
+    tokens_error = [name for name in TOKENS if globals()[name] is None]
+    if tokens_error:
         logger.critical(TOKENS_ERROR.format(token=tokens_error))
         return False
     return True
@@ -129,8 +128,8 @@ def main():
     while True:
         try:
             response = get_api_answer(current_timestamp)
-            message = parse_status(check_response(response)[0])
-            send_message(bot, message)
+            if check_response(response):
+                send_message(bot, parse_status(check_response(response)[0]))
             current_timestamp = response.get('current_date', current_timestamp)
         except Exception as error:
             message = BOT_SEND_ERROR_MESSSAGE.format(error=error)
