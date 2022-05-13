@@ -128,9 +128,12 @@ def main():
     while True:
         try:
             response = get_api_answer(current_timestamp)
-            if check_response(response):
-                send_message(bot, parse_status(check_response(response)[0]))
-            current_timestamp = response.get('current_date', current_timestamp)
+            homeworks = check_response(response)
+            if homeworks:
+                send_message(bot, parse_status(homeworks[0]))
+                current_timestamp = response.get(
+                    'current_date', current_timestamp
+                )
         except Exception as error:
             message = BOT_SEND_ERROR_MESSSAGE.format(error=error)
             logger.exception(message)
