@@ -22,7 +22,6 @@ VERDICTS = {
     'reviewing': 'Работа взята на проверку ревьюером.',
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
-STATUS = 'Новый статус домашней работы {name} - {verdict}'
 SEND_MESSAGE_ERROR = 'Ошибка {error} отправки сообщения {message}.'
 SEND_MESSAGE_SUCCSES = 'Cообщение {message} успешно отправлено.'
 NETWORK_ERROR = 'Ошибка {error} соединения с {url}, {headers}, {params}'
@@ -56,11 +55,13 @@ def send_message(bot, message):
     """Отправляет сообщение в Telegramm."""
     try:
         bot.send_message(TELEGRAM_CHAT_ID, message)
-        logger.info(SEND_MESSAGE_SUCCSES.format(message))
-    except Exception as error:
+        logger.info(SEND_MESSAGE_SUCCSES.format(message=message))
+        return True
+    except telegram.error.TelegramError as error:
         logger.exception(SEND_MESSAGE_ERROR.format(
             error=error, message=message
         ))
+        return False
 
 
 def get_api_answer(current_timestamp):
@@ -129,8 +130,7 @@ def main():
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            if homeworks:
-                send_message(bot, parse_status(homeworks[0]))
+            if homeworks and send_message(bot, parse_status(homeworks[0])):
                 current_timestamp = response.get(
                     'current_date', current_timestamp
                 )
